@@ -1,0 +1,16 @@
+# Compilación de Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# Archivos del IDE
+.idea/
+*.iml
+.vscode/
+
+# Archivos temporales y de estado de Terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl

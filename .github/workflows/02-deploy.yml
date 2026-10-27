@@ -1,0 +1,102 @@
+name: 02 - Application Pipeline (Spring Boot)
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, closed ]
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'Dockerfile'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Se ejecuta al abrir o actualizar el PR
+  app-ci:
+    name: Application CI (Tests & Security Scan)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Permisos y Pruebas Unitarias
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean test
+
+      - name: Descargar dependencias para Escaneo
+        run: ./mvnw dependency:go-offline -B
+
+      - name: Escaneo de Seguridad (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+        env:
+          TRIVY_JAVA_DB_REPOSITORY: 'public.ecr.aws/aquasecurity/trivy-java-db:1'
+
+  # Se ejecuta ÚNICAMENTE cuando el PR se cierra mediante un Merge
+  app-cd:
+    name: Application CD (Build, Push & Deploy)
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compilar JAR
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean package -DskipTests=true
+
+      - name: Autenticar en AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build y Push a ECR
+        id: build-image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: products
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "image_uri=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+      - name: Inyectar la imagen en el manifiesto de Kubernetes
+        run: |
+          sed -i "s|__IMAGE_URL__|${{ steps.build-image.outputs.image_uri }}|g" k8s/product-deployment.yaml
+
+      - name: Configurar kubeconfig para EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Desplegar en Kubernetes y verificar Rolling Update
+        run: |
+          kubectl apply -f k8s/
+          kubectl rollout status deployment/product-app --timeout=180s

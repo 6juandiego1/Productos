@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: Productos
+#  security:
+#    oauth2:
+#      resourceserver:
+#        jwt:
+#          issuer-uri: ${COGNITO_ISSUER_URI}
+
+logging:
+  level:
+    root: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+server:
+  port: 5000

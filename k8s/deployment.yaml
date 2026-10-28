@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-app
+  namespace: products-app-prod
+  labels:
+    app: product
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product
+  template:
+    metadata:
+      labels:
+        app: product
+    spec:
+      containers:
+        - name: app
+          image: __IMAGE_URL__
+          ports:
+            - containerPort: 5000
+          env:
+            - name: COGNITO_ISSUER_URI
+              value: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_WD3LkfFqT"

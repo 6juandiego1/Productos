@@ -90,7 +90,7 @@ jobs:
           
       - name: Inyectar la imagen en el manifiesto de Kubernetes
         run: |
-          sed -i "s|__IMAGE_URL__|${{ steps.build-image.outputs.image_uri }}|g" k8s/product-deployment.yaml
+          sed -i "s|__IMAGE_URL__|${{ steps.build-image.outputs.image_uri }}|g" k8s/deployment.yaml
 
       - name: Configurar kubeconfig para EKS
         run: |
